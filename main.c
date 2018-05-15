@@ -9,6 +9,7 @@ typedef struct{
 } Pair;
 
 void readCSV(Pair*** queues, char* CSVpath, int* length);
+void freeCSV(Pair*** queues, int* length);
 
 void main(int argc, char **argv) {
 
@@ -25,6 +26,8 @@ void main(int argc, char **argv) {
     for(int j=0; j<length; j++){
         printf("%s\n%s\n", queues[j]->certPath, queues[j]->URL);
     }
+
+    freeCSV(&queues, &length);
 
 }
 
@@ -75,5 +78,16 @@ void readCSV(Pair*** queues, char* CSVpath, int* length){
         (*queues)[*length] = queue;
         (*length)++;
     }
+    fclose(fp);
     free(line);
 };
+
+
+void freeCSV(Pair*** queues, int* length){
+    for(int i=0; i<*length; i++){
+        free((*queues)[i]->certPath);
+        free((*queues)[i]->URL);
+        free((*queues)[i]);
+    }
+    free(*queues);
+}
