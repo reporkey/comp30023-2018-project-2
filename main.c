@@ -5,7 +5,6 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
-#include <time.h>
 
 #include <openssl/bio.h>
 #define DATE_LEN 128
@@ -118,6 +117,10 @@ void readCert(Web*** queues){
 
     char* path = (*queues)[1]->certPath;
     char* DN = (*queues)[1]->URL;
+    int isSubj = 0;
+    int isDate = 0;
+    int isKeyLen = 0;
+
     FILE *fp = fopen(path, "r");
     if (!fp) {
         fprintf(stderr, "unable to open: %s\n", path);
@@ -135,37 +138,61 @@ void readCert(Web*** queues){
      * extension) and wildcards */
 
     char *subj = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
-    int isSubj = X509_check_host(cert, DN, strlen(DN), 0, NULL);
-    printf("\n%s\n%s\nisSubj = %d\n", subj, DN, isSubj);
+    isSubj = X509_check_host(cert, DN, strlen(DN), 0, NULL);
+    printf("\n%s\n%s\nisSubj = %d\n\n", subj, DN, isSubj);
 
-    /*validation of dates, both the Not Before and Not After dates*/
+    /* validation of dates, both the Not Before and Not After dates */
 
     ASN1_TIME *not_before = X509_get_notBefore(cert);
     ASN1_TIME *not_after = X509_get_notAfter(cert);
-
     // mine own check time
-    struct tm* tUTC;
-    time_t t = time(NULL);
-    tUTC = gmtime(&t);
-    char temp[100];
-    char tUTCstr[15] = "/0";
-    sprintf(temp, tUTC->tm_year+1900);
-//    itoa((tUTC->tm_year +1900), temp, 10);     //year
-//    strncat(tUTCstr, temp, strlen(temp));
-    printf("%s\n", temp);
-
-//    printf ( "%s\n", asctime(tUTC));
-
-    const char* str = (const char*) not_after->data;
-    printf("test: %s\n", str);
-
+    int day = -1;
+    int sec = -1;
+    if (ASN1_TIME_diff(&day, &sec, not_before, NULL)) {
+        if (day < 0 || sec < 0){
+            printf("Now is Earlier than not_before\n");
+            return;
+        }else{
+            printf("Now is Later than not_before\n");
+            isDate = 1;
+        }
+    } else{
+        fprintf(stderr, "Passed-in time structure has invalid syntax\n");
+        exit(EXIT_FAILURE);
+    }
+    day = 1;
+    sec = 1;
+    if (ASN1_TIME_diff(&day, &sec, not_after, NULL)) {
+        if (day > 0 || sec > 0){
+            printf("Now is Later than not_after\n");
+            return;
+        }else{
+            printf("Now is Earlier than not_after\n");
+            isDate = 1;
+        }
+    } else{
+        fprintf(stderr, "Passed-in time structure has invalid syntax\n");
+        exit(EXIT_FAILURE);
+    }
+    // given display time function
     char not_after_str[DATE_LEN];
     char not_before_str[DATE_LEN];
-
-    // given display time function
     convert_ASN1TIME(not_after, not_after_str, DATE_LEN);
     convert_ASN1TIME(not_before, not_before_str, DATE_LEN);
-    printf("%s\n%s",not_before_str, not_after_str);
+    printf("%s\n%s\nisDate = %d\n\n", not_before_str, not_after_str, isDate);
+
+    /* minimum key length of 2048 bits for RSA */
+    EVP_PKEY * public_key = X509_get_pubkey(cert);
+    RSA *rsa_key = EVP_PKEY_get1_RSA(public_key);
+    int key_length = RSA_size(rsa_key)*8;
+    if (key_length >= 2048){
+        isKeyLen = 1;
+    }else{
+        RSA_free(rsa_key);
+        return;
+    }
+    printf("%d\n", key_length);
+    RSA_free(rsa_key);
 
     X509_free(cert);
     fclose(fp);
