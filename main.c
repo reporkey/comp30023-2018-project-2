@@ -13,10 +13,18 @@
 typedef struct{
     char* certPath;
     char* URL;
+    int isSubj;
+    int isDate;
+    int isKeyLen;
+    int isExtn;
 } Web;
 
 void readCSV(Web*** queues, char* CSVpath, int* length);
-void readCert(Web*** queues);
+void verifyCert(Web* queues);
+int checkCN(X509 *cert, char* DN);
+int checkDate(X509 *cert);
+int checkKeyLen(X509 *cert);
+int checkExtn(X509 *cert);
 void freeCSV(Web*** queues, int* length);
 
 /*======================TEMP======================*/
@@ -40,7 +48,7 @@ int convert_ASN1TIME(ASN1_TIME *t, char* buf, size_t len)
     BIO_free(b);
     return EXIT_SUCCESS;
 }
-/*============================================*/
+/*====================main========================*/
 
 void main(int argc, char **argv) {
 
@@ -54,15 +62,18 @@ void main(int argc, char **argv) {
 
     readCSV(&queues, argv[1], &length);
     for(int j=0; j<length; j++){
-        printf("%s\n%s\n", queues[j]->certPath, queues[j]->URL);
+
     }
-    
-    readCert(&queues);
+
+    for(int i=0; i<length; i++){
+        verifyCert(queues[i]);
+    }
 
     freeCSV(&queues, &length);
 
 }
 
+/*===================functions==================*/
 void readCSV(Web*** queues, char* CSVpath, int* length){
 
     FILE *fp = NULL;
@@ -80,26 +91,26 @@ void readCSV(Web*** queues, char* CSVpath, int* length){
 
         /* create a pair of cert in queues */
 
-        Web* queue = (Web*) malloc(sizeof(Web));
+        Web* web = (Web*) malloc(sizeof(Web));
 
         // cert path
         char* temp = strtok(line, ",");
-        queue->certPath = (char*) malloc(sizeof(char) * strlen(temp));
-        if (queue->certPath == NULL){
-            perror("malloc queue->certPath");
+        web->certPath = (char*) malloc(sizeof(char) * strlen(temp));
+        if (web->certPath == NULL){
+            perror("malloc web->certPath");
             exit(EXIT_FAILURE);
         }
-        strcpy(queue->certPath, temp);
+        strcpy(web->certPath, temp);
 
         // URL
         temp = strtok(NULL, ",");
-        queue->URL = (char*) malloc(sizeof(char) * strlen(temp));
-        if (queue->URL == NULL){
-            perror("malloc queue->URL");
+        web->URL = (char*) malloc(sizeof(char) * strlen(temp));
+        if (web->URL == NULL){
+            perror("malloc web->URL");
             exit(EXIT_FAILURE);
         }
         temp[(strlen(temp) -1)] = '\0';
-        strcpy(queue->URL, temp);
+        strcpy(web->URL, temp);
 
         // put into queues
         *queues = (Web**) realloc(*queues, (*length+1)*sizeof(Web*));
@@ -107,54 +118,84 @@ void readCSV(Web*** queues, char* CSVpath, int* length){
             perror("realloc queues");
             exit(EXIT_FAILURE);
         }
-        (*queues)[*length] = queue;
+        (*queues)[*length] = web;
         (*length)++;
     }
     fclose(fp);
     free(line);
 };
 
-void readCert(Web*** queues){
+void verifyCert(Web* web){
 
-    char* path = (*queues)[1]->certPath;
-    char* DN = (*queues)[1]->URL;
-    int isSubj = 0;
-    int isDate = 0;
-    int isKeyLen = 0;
+//    printf("%s\n%s\n", web->certPath, web->URL);
+
+    char* path = web->certPath;
+    web->isSubj = 0;
+    web->isDate = 0;
+    web->isKeyLen = 0;
+    web->isExtn = 0;
 
     FILE *fp = fopen(path, "r");
     if (!fp) {
-        fprintf(stderr, "unable to open: %s\n", path);
+        fprintf(stderr, "Unable to open: %s\n", path);
         exit(EXIT_FAILURE);
     }
 
     X509 *cert = PEM_read_X509(fp, NULL, NULL, NULL);
     if (!cert) {
-        fprintf(stderr, "unable to parse certificate in: %s\n", path);
+        fprintf(stderr, "Unable to parse certificate in: %s\n", path);
         fclose(fp);
         exit(EXIT_FAILURE);
     }
 
     /* check domain name validation (including Subject Alternative Name (SAN)
      * extension) and wildcards */
-
-    char *subj = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
-    isSubj = X509_check_host(cert, DN, strlen(DN), 0, NULL);
-    printf("\n%s\n%s\nisSubj = %d\n\n", subj, DN, isSubj);
+    web->isSubj = checkCN(cert, web->URL);
 
     /* validation of dates, both the Not Before and Not After dates */
+    web->isDate = checkDate(cert);
 
-    ASN1_TIME *not_before = X509_get_notBefore(cert);
-    ASN1_TIME *not_after = X509_get_notAfter(cert);
+    /* minimum key length of 2048 bits for RSA */
+    web->isKeyLen = checkKeyLen(cert);
+
+    /* correct key usage, including extensions */
+    web->isExtn = checkExtn(cert);
+
+//    printf("isSubj = %d\n", web->isSubj);
+//    printf("isDate = %d\n", web->isDate);
+//    printf("isKeyLen = %d\n", web->isKeyLen);
+//    printf("isExtn = %d\n", web->isExtn);
+    printf("%d\n", web->isSubj && web->isDate && web->isKeyLen && web->isExtn);
+    X509_free(cert);
+    fclose(fp);
+
+}
+
+int checkCN(X509 *cert, char* DN){
+    return X509_check_host(cert, DN, strlen(DN), 0, NULL);
+}
+
+int checkDate(X509 *cert){
+    int isDate = 0;
+    ASN1_TIME* not_before = X509_get_notBefore(cert);
+    ASN1_TIME* not_after = X509_get_notAfter(cert);
+    /*============================================*/
+    // given display time function
+    char not_after_str[DATE_LEN];
+    char not_before_str[DATE_LEN];
+    convert_ASN1TIME(not_after, not_after_str, DATE_LEN);
+    convert_ASN1TIME(not_before, not_before_str, DATE_LEN);
+//    printf("%s\n%s\n\n", not_before_str, not_after_str);
+    /*============================================*/
     // mine own check time
     int day = -1;
     int sec = -1;
     if (ASN1_TIME_diff(&day, &sec, not_before, NULL)) {
         if (day < 0 || sec < 0){
-            printf("Now is Earlier than not_before\n");
-            return;
+//            printf("Now is Earlier than not_before\n");
+            return 0;
         }else{
-            printf("Now is Later than not_before\n");
+//            printf("Now is Later than not_before\n");
             isDate = 1;
         }
     } else{
@@ -165,50 +206,47 @@ void readCert(Web*** queues){
     sec = 1;
     if (ASN1_TIME_diff(&day, &sec, not_after, NULL)) {
         if (day > 0 || sec > 0){
-            printf("Now is Later than not_after\n");
-            return;
+//            printf("Now is Later than not_after\n");
+            return 0;
         }else{
-            printf("Now is Earlier than not_after\n");
+//            printf("Now is Earlier than not_after\n");
             isDate = 1;
         }
     } else{
         fprintf(stderr, "Passed-in time structure has invalid syntax\n");
         exit(EXIT_FAILURE);
     }
-    // given display time function
-    char not_after_str[DATE_LEN];
-    char not_before_str[DATE_LEN];
-    convert_ASN1TIME(not_after, not_after_str, DATE_LEN);
-    convert_ASN1TIME(not_before, not_before_str, DATE_LEN);
-    printf("%s\n%s\nisDate = %d\n\n", not_before_str, not_after_str, isDate);
+    return isDate;
+}
 
-    /* minimum key length of 2048 bits for RSA */
-
+int checkKeyLen(X509 *cert){
     EVP_PKEY * public_key = X509_get_pubkey(cert);
     RSA *rsa_key = EVP_PKEY_get1_RSA(public_key);
     if (RSA_size(rsa_key)*8 >= 2048){
-        isKeyLen = 1;
+        RSA_free(rsa_key);
+        return 1;
     }else{
         RSA_free(rsa_key);
-        return;
+        return 0;
     }
-    RSA_free(rsa_key);
+}
 
-    /* correct key usage, including extensions */
+int checkExtn(X509 *cert){
+    int isCA = 0;
+    // BasicConstraints includes “CA:FALSE”
+    if (cert->ex_flags & EXFLAG_BCONS){
+        if (cert->ex_flags & EXFLAG_CA){
+            isCA = 1;
+        }
 
-    int isCA = X509_check_ca(cert);
-
-    int indexKeyUse = X509_get_ext_by_NID(cert, NID_ext_key_usage, -1);
-    printf("index= %d\n", indexKeyUse);
-    if (indexKeyUse >= 0){
-        X509_EXTENSION* KeyUsage = X509_get_ext(cert, indexKeyUse);
-        printf("data = %d\n", (KeyUsage->object->nid));
     }
-//    XKU_SSL_SERVER
+//    printf("my: %d\n", isCA);
 
-    X509_free(cert);
-    fclose(fp);
-
+    // Enhanced Key Usage includes “TLS Web Server Authentication”
+    // 2 is the index of "ssl server" in purpose list
+    int isServer = X509_check_purpose(cert, 2, 0);
+//    printf("%d\n\n", isServer);
+    return (isCA==0) && (isServer==1);
 }
 
 void freeCSV(Web*** queues, int* length){
