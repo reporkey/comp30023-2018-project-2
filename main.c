@@ -5,6 +5,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
+#include <inttypes.h>
 
 #include <openssl/bio.h>
 #define DATE_LEN 128
@@ -182,17 +183,28 @@ void readCert(Web*** queues){
     printf("%s\n%s\nisDate = %d\n\n", not_before_str, not_after_str, isDate);
 
     /* minimum key length of 2048 bits for RSA */
+
     EVP_PKEY * public_key = X509_get_pubkey(cert);
     RSA *rsa_key = EVP_PKEY_get1_RSA(public_key);
-    int key_length = RSA_size(rsa_key)*8;
-    if (key_length >= 2048){
+    if (RSA_size(rsa_key)*8 >= 2048){
         isKeyLen = 1;
     }else{
         RSA_free(rsa_key);
         return;
     }
-    printf("%d\n", key_length);
     RSA_free(rsa_key);
+
+    /* correct key usage, including extensions */
+
+    int isCA = X509_check_ca(cert);
+
+    int indexKeyUse = X509_get_ext_by_NID(cert, NID_ext_key_usage, -1);
+    printf("index= %d\n", indexKeyUse);
+    if (indexKeyUse >= 0){
+        X509_EXTENSION* KeyUsage = X509_get_ext(cert, indexKeyUse);
+        printf("data = %d\n", (KeyUsage->object->nid));
+    }
+//    XKU_SSL_SERVER
 
     X509_free(cert);
     fclose(fp);
