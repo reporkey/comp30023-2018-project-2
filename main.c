@@ -25,7 +25,8 @@ int checkCN(X509 *cert, char* DN);
 int checkDate(X509 *cert);
 int checkKeyLen(X509 *cert);
 int checkExtn(X509 *cert);
-void freeCSV(Web*** queues, int* length);
+void writeCSV(Web** queues, int length);
+void freeCSV(Web*** queues, int length);
 
 /*======================TEMP======================*/
 
@@ -61,15 +62,14 @@ void main(int argc, char **argv) {
     }
 
     readCSV(&queues, argv[1], &length);
-    for(int j=0; j<length; j++){
-
-    }
 
     for(int i=0; i<length; i++){
         verifyCert(queues[i]);
     }
 
-    freeCSV(&queues, &length);
+    writeCSV(queues, length);
+
+    freeCSV(&queues, length);
 
 }
 
@@ -283,10 +283,24 @@ int checkExtn(X509 *cert){
     return (isCA==0) && (isServer==1);
 }
 
+void writeCSV(Web** queues, int length){
+    FILE *f = fopen("output.csv", "w");
+    if (f == NULL) {
+        fprintf(stderr, "Error opening file!\n");
+        exit(EXIT_FAILURE);
+    }
 
+    for (int i=0; i<length; i++){
+        fprintf(f, "%s,", queues[i]->certPath);
+        fprintf(f, "%s,", queues[i]->URL);
+        fprintf(f, "%d\n", queues[i]->isCN && queues[i]->isDate && queues[i]->isKeyLen && queues[i]->isExtn);
+    }
 
-void freeCSV(Web*** queues, int* length) {
-    for (int i = 0; i < *length; i++) {
+    fclose(f);
+}
+
+void freeCSV(Web*** queues, int length) {
+    for (int i = 0; i < length; i++) {
         free((*queues)[i]->certPath);
         free((*queues)[i]->URL);
         free((*queues)[i]);
