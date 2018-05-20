@@ -13,7 +13,7 @@
 typedef struct{
     char* certPath;
     char* URL;
-    int isSubj;
+    int isCN;
     int isDate;
     int isKeyLen;
     int isExtn;
@@ -130,7 +130,7 @@ void verifyCert(Web* web){
 //    printf("%s\n%s\n", web->certPath, web->URL);
 
     char* path = web->certPath;
-    web->isSubj = 0;
+    web->isCN = 0;
     web->isDate = 0;
     web->isKeyLen = 0;
     web->isExtn = 0;
@@ -150,7 +150,7 @@ void verifyCert(Web* web){
 
     /* check domain name validation (including Subject Alternative Name (SAN)
      * extension) and wildcards */
-    web->isSubj = checkCN(cert, web->URL);
+    web->isCN = checkCN(cert, web->URL);
 
     /* validation of dates, both the Not Before and Not After dates */
     web->isDate = checkDate(cert);
@@ -161,18 +161,34 @@ void verifyCert(Web* web){
     /* correct key usage, including extensions */
     web->isExtn = checkExtn(cert);
 
-//    printf("isSubj = %d\n", web->isSubj);
+//    printf("isCN = %d\n", web->isCN);
 //    printf("isDate = %d\n", web->isDate);
 //    printf("isKeyLen = %d\n", web->isKeyLen);
 //    printf("isExtn = %d\n", web->isExtn);
-    printf("%d\n", web->isSubj && web->isDate && web->isKeyLen && web->isExtn);
+    printf("%d\n", web->isCN && web->isDate && web->isKeyLen && web->isExtn);
     X509_free(cert);
     fclose(fp);
 
 }
 
 int checkCN(X509 *cert, char* DN){
-    return X509_check_host(cert, DN, strlen(DN), 0, NULL);
+    int isCN = 0;
+
+    char *subj = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
+    char* splitCN = "/CN=";
+    char* CN = strstr(subj, splitCN) + strlen(splitCN) * sizeof(char);
+
+//    printf("pre-DN: %s\n", DN);
+    if (CN[0] == '*'){
+        CN = CN + 2 * sizeof(char);
+        DN = strstr(DN, ".") + sizeof(char);
+    }
+    if (strcmp(CN,DN) == 0){
+        isCN = 1;
+
+    }
+    OPENSSL_free(subj);
+    return isCN;
 }
 
 int checkDate(X509 *cert){
@@ -234,23 +250,43 @@ int checkKeyLen(X509 *cert){
 int checkExtn(X509 *cert){
     int isCA = 0;
     // BasicConstraints includes “CA:FALSE”
-    if (cert->ex_flags & EXFLAG_BCONS){
-        if (cert->ex_flags & EXFLAG_CA){
-            isCA = 1;
-        }
+    X509_EXTENSION *ex = X509_get_ext(cert, X509_get_ext_by_NID(cert, NID_basic_constraints, -1));
+    ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
 
+    BUF_MEM *bptr = NULL;
+    char *buff = NULL;
+
+    BIO *bio = BIO_new(BIO_s_mem());
+    if (!X509V3_EXT_print(bio, ex, 0, 0)) {
+        fprintf(stderr, "Error in reading extensions");
     }
-//    printf("my: %d\n", isCA);
+    BIO_flush(bio);
+    BIO_get_mem_ptr(bio, &bptr);
+
+    //bptr->data is not NULL terminated - add null character
+    buff = (char *)malloc((bptr->length + 1) * sizeof(char));
+    memcpy(buff, bptr->data, bptr->length);
+    buff[bptr->length] = '\0';
+
+    if(strstr(buff, "CA:FALSE") == NULL) {
+        isCA = 1;
+    }
+    BIO_free_all(bio);
+    free(buff);
 
     // Enhanced Key Usage includes “TLS Web Server Authentication”
     // 2 is the index of "ssl server" in purpose list
     int isServer = X509_check_purpose(cert, 2, 0);
-//    printf("%d\n\n", isServer);
+
+//    printf("isCA = %d\n", isCA);
+//    printf("isServer = %d\n\n", isServer);
     return (isCA==0) && (isServer==1);
 }
 
-void freeCSV(Web*** queues, int* length){
-    for(int i=0; i<*length; i++){
+
+
+void freeCSV(Web*** queues, int* length) {
+    for (int i = 0; i < *length; i++) {
         free((*queues)[i]->certPath);
         free((*queues)[i]->URL);
         free((*queues)[i]);
