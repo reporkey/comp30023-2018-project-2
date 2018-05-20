@@ -13,8 +13,7 @@
 int main()
 {
 
-    //const char test_cert_example[] = "./cert-file2.pem";
-    const char test_cert_example[] = "./testtwo.crt";
+    const char test_cert_example[] = "./cert-file2.pem";
     BIO *certificate_bio = NULL;
     X509 *cert = NULL;
     X509_NAME *cert_issuer = NULL;
@@ -27,7 +26,7 @@ int main()
     ERR_load_crypto_strings();
 
     //create BIO object to read certificate
-    certificate_bio= BIO_new(BIO_s_file());
+    certificate_bio = BIO_new(BIO_s_file());
 
     //Read certificate into BIO
     if (!(BIO_read_filename(certificate_bio, test_cert_example)))
@@ -49,7 +48,7 @@ int main()
 
     cert_issuer = X509_get_issuer_name(cert);
     char issuer_cn[256] = "Issuer CN NOT FOUND";
-    X509_NAME_get_text_by_NID(cert_issuer, NID_commonName, issuer_cn, 256); // to get cn
+    X509_NAME_get_text_by_NID(cert_issuer, NID_commonName, issuer_cn, 256);
     printf("Issuer CommonName:%s\n", issuer_cn);
 
     //List of extensions available at https://www.openssl.org/docs/man1.1.0/crypto/X509_REVOKED_get0_extensions.html
