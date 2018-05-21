@@ -4,6 +4,6 @@
 *.pdf
 *.csv
 *.o
-*/sh
+*.sh
 certckeck
 */*
