@@ -95,13 +95,25 @@ void verifyCert(Web* web){
 
     /* check domain name validation and SAN, and their wildcards */
     web->isDN = checkDN(cert, web->URL);
-
+    if (web->isDN == 0){
+        X509_free(cert);
+        fclose(fp);
+        return;
+    }
     /* check validation of dates */
     web->isDate = checkDate(cert);
-
+    if (web->isDate == 0){
+        X509_free(cert);
+        fclose(fp);
+        return;
+    }
     /* check length of RSA */
     web->isKeyLen = checkKeyLen(cert);
-
+    if (web->isKeyLen == 0){
+        X509_free(cert);
+        fclose(fp);
+        return;
+    }
     /* check extensions */
     web->isExtn = checkExtn(cert);
 
@@ -110,35 +122,84 @@ void verifyCert(Web* web){
 }
 
 int checkDN(X509 *cert, char* DN) {
-    int isDN = 0;
+
+    /* check CN*/
+
+    int isCN = 0;
     char *subj = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
     char *splitCN = "/CN=";
     char *CN = strstr(subj, splitCN) + strlen(splitCN) * sizeof(char);
 
-    isDN = compareDN(CN, DN);
-
-    /*
-     *
-     *
-     *  CHECK   S   A   N   !!!!!!
-     *
-     *
-     * */
-
-
-
+    isCN = compareDN(CN, DN);
     OPENSSL_free(subj);
-    return isDN;
+    if(isCN == 1) return isCN;
+
+    /* check SAN */
+
+    int isSAN = 0;
+    X509_EXTENSION *ex = X509_get_ext(cert, X509_get_ext_by_NID(cert, NID_subject_alt_name, -1));
+    if (ex != NULL) {
+        BUF_MEM *bptr = NULL;
+        char *buff = NULL;
+        BIO *bio = BIO_new(BIO_s_mem());
+        if (!X509V3_EXT_print(bio, ex, 0, 0)) {
+            fprintf(stderr, "Error in reading extensions");
+        }
+        BIO_flush(bio);
+        BIO_get_mem_ptr(bio, &bptr);
+
+        buff = (char *)malloc((bptr->length + 1) * sizeof(char));
+        memcpy(buff, bptr->data, bptr->length);
+        buff[bptr->length] = '\0';
+        printf("%s\n", buff);
+        char* SAN = buff;
+        char* SANnext = NULL;
+        char *splitSAN = "DNS:";
+        while ((isSAN != 1) && (SAN != NULL) && (SAN = strstr(SAN, splitSAN)) != NULL){
+            SAN += sizeof(char)*strlen(splitSAN);
+            SANnext = strstr(SAN, splitSAN);
+            if (SANnext != NULL){
+                *(SANnext-sizeof(char)) = '\0';
+            }
+            printf("%s\n", SAN);
+            isSAN = compareDN(SAN, DN);
+            SAN = SANnext;
+        }
+        BIO_free_all(bio);
+        free(buff);
+    }
+    return isCN || isSAN;
 }
 
 int compareDN(char* CN, char* DN){
     int isSame = 0;
-    if (CN[0] == '*'){
-        CN = CN + 2 * sizeof(char);
-        DN = strstr(DN, ".") + sizeof(char);
-    }
-    if (strcmp(CN,DN) == 0){
-        isSame = 1;
+    int CNlen = strlen(CN);
+    int DNlen = strlen(DN);
+
+    if (CNlen > 2) {
+
+        if (CN[0] == '*') {
+
+            // if *.example.com OR *example.example.com
+            CN = CN + sizeof(char);
+            for(int i=0; i<DNlen; i++){
+                if (strcmp(CN,&DN[i]) == 0){
+                    isSame = 1;
+                }
+            }
+        }else {
+            // if example.example.com
+            if (strcmp(CN, DN) == 0) isSame = 1;
+
+            // if example*.example.com
+            for (int i = 0; i < DNlen && i < CNlen; i++) {
+                if ((CN[i] != DN[i]) && (CN[i] == '*') && (i+1 < CNlen)) {
+                    for (int j = i; j < DNlen-i; j++) {
+                        if (strcmp(&CN[i+1], &DN[j]) == 0) isSame = 1;
+                    }
+                }
+            }
+        }
     }
     return isSame;
 }
