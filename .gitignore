@@ -2,6 +2,7 @@
 *.crt
 *.pem
 *.pdf
+*.csv
 *.o
 */sh
 certckeck
