@@ -13,7 +13,7 @@
 typedef struct{
     char* certPath;
     char* URL;
-    int isCN;
+    int isDN;
     int isDate;
     int isKeyLen;
     int isExtn;
@@ -21,7 +21,8 @@ typedef struct{
 
 void readCSV(Web*** queues, char* CSVpath, int* length);
 void verifyCert(Web* queues);
-int checkCN(X509 *cert, char* DN);
+int checkDN(X509 *cert, char* DN);
+int compareDN(char* CN, char* DN);
 int checkDate(X509 *cert);
 int checkKeyLen(X509 *cert);
 int checkExtn(X509 *cert);

@@ -39,7 +39,7 @@ void readCSV(Web*** queues, char* CSVpath, int* length){
         /* create each web in queues */
 
         Web* web = (Web*) malloc(sizeof(Web));
-        web->isCN = 0;
+        web->isDN = 0;
         web->isDate = 0;
         web->isKeyLen = 0;
         web->isExtn = 0;
@@ -93,8 +93,8 @@ void verifyCert(Web* web){
         exit(EXIT_FAILURE);
     }
 
-    /* check domain name validation and its wildcards */
-    web->isCN = checkCN(cert, web->URL);
+    /* check domain name validation and SAN, and their wildcards */
+    web->isDN = checkDN(cert, web->URL);
 
     /* check validation of dates */
     web->isDate = checkDate(cert);
@@ -109,21 +109,38 @@ void verifyCert(Web* web){
     fclose(fp);
 }
 
-int checkCN(X509 *cert, char* DN){
-    int isCN = 0;
+int checkDN(X509 *cert, char* DN) {
+    int isDN = 0;
     char *subj = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
-    char* splitCN = "/CN=";
-    char* CN = strstr(subj, splitCN) + strlen(splitCN) * sizeof(char);
+    char *splitCN = "/CN=";
+    char *CN = strstr(subj, splitCN) + strlen(splitCN) * sizeof(char);
 
+    isDN = compareDN(CN, DN);
+
+    /*
+     *
+     *
+     *  CHECK   S   A   N   !!!!!!
+     *
+     *
+     * */
+
+
+
+    OPENSSL_free(subj);
+    return isDN;
+}
+
+int compareDN(char* CN, char* DN){
+    int isSame = 0;
     if (CN[0] == '*'){
         CN = CN + 2 * sizeof(char);
         DN = strstr(DN, ".") + sizeof(char);
     }
     if (strcmp(CN,DN) == 0){
-        isCN = 1;
+        isSame = 1;
     }
-    OPENSSL_free(subj);
-    return isCN;
+    return isSame;
 }
 
 int checkDate(X509 *cert){
@@ -213,7 +230,7 @@ void writeCSV(Web** queues, int length){
     for (int i=0; i<length; i++){
         fprintf(f, "%s,", queues[i]->certPath);
         fprintf(f, "%s,", queues[i]->URL);
-        fprintf(f, "%d\n", queues[i]->isCN && queues[i]->isDate && queues[i]->isKeyLen && queues[i]->isExtn);
+        fprintf(f, "%d\n", queues[i]->isDN && queues[i]->isDate && queues[i]->isKeyLen && queues[i]->isExtn);
     }
 
     fclose(f);
