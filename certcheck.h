@@ -1,14 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
-#include <inttypes.h>
-
 #include <openssl/bio.h>
-#define DATE_LEN 128
 
 typedef struct{
     char* certPath;

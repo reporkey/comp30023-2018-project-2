@@ -5,7 +5,7 @@ int main(int argc, char **argv) {
     Web** queues = NULL;
 
     if (argc != 2){
-        fprintf(stderr, "Error: Incorrect num of arguments.\n");
+        fprintf(stderr, "Error: Incorrect numbers of arguments.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -30,7 +30,7 @@ void readCSV(Web*** queues, char* CSVpath, int* length){
 
     fp = fopen(CSVpath, "r");
     if (fp == NULL){
-        fprintf(stderr, "unable to open: %s\n", CSVpath);
+        fprintf(stderr, "Unable to open: %s\n", CSVpath);
         exit(EXIT_FAILURE);
     }
 
@@ -39,6 +39,10 @@ void readCSV(Web*** queues, char* CSVpath, int* length){
         /* create each web in queues */
 
         Web* web = (Web*) malloc(sizeof(Web));
+        if (web == NULL) {
+            fprintf(stderr, "Failed to malloc the %dth web\n", *length+1);
+            return;
+        }
         web->isDN = 0;
         web->isDate = 0;
         web->isKeyLen = 0;
@@ -48,8 +52,8 @@ void readCSV(Web*** queues, char* CSVpath, int* length){
         char* temp = strtok(line, ",");
         web->certPath = (char*) malloc(sizeof(char) * strlen(temp)+1);
         if (web->certPath == NULL){
-            perror("malloc web->certPath");
-            exit(EXIT_FAILURE);
+            fprintf(stderr, "Failed to malloc certPath in the %dth web\n", *length+1);
+            return;
         }
         strcpy(web->certPath, temp);
 
@@ -58,16 +62,16 @@ void readCSV(Web*** queues, char* CSVpath, int* length){
         temp[(strlen(temp) -1)] = '\0';
         web->URL = (char*) malloc(sizeof(char) * strlen(temp)+1);
         if (web->URL == NULL){
-            perror("malloc web->URL");
-            exit(EXIT_FAILURE);
+            fprintf(stderr, "Failed to malloc URL in the %dth web\n", *length+1);
+            return;
         }
         strcpy(web->URL, temp);
 
         // put into queues
         *queues = (Web**) realloc(*queues, (*length+1)*sizeof(web));
         if (*queues == NULL){
-            perror("realloc queues");
-            exit(EXIT_FAILURE);
+            fprintf(stderr, "Failed to reallocate queues in the %dth web\n", *length+1);
+            return;
         }
         (*queues)[*length] = web;
         (*length)++;
@@ -83,14 +87,14 @@ void verifyCert(Web* web){
 
     FILE *fp = fopen(path, "r");
     if (!fp) {
-        fprintf(stderr, "Unable to open: %s\n", path);
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "Unable to open %s\n", path);
+        return;
     }
     X509 *cert = PEM_read_X509(fp, NULL, NULL, NULL);
     if (!cert) {
         fprintf(stderr, "Unable to parse certificate in: %s\n", path);
         fclose(fp);
-        exit(EXIT_FAILURE);
+        return;
     }
 
     /* check domain name validation and SAN, and their wildcards */
@@ -144,11 +148,16 @@ int checkDN(X509 *cert, char* DN) {
         BIO *bio = BIO_new(BIO_s_mem());
         if (!X509V3_EXT_print(bio, ex, 0, 0)) {
             fprintf(stderr, "Error in reading extensions");
+            return -1;
         }
         BIO_flush(bio);
         BIO_get_mem_ptr(bio, &bptr);
 
         buff = (char *)malloc((bptr->length + 1) * sizeof(char));
+        if (buff == NULL){
+            fprintf(stderr, "Failed to malloc buff at %d\n", __LINE__);
+            return -1;
+        }
         memcpy(buff, bptr->data, bptr->length);
         buff[bptr->length] = '\0';
         printf("%s\n", buff);
@@ -217,8 +226,8 @@ int checkDate(X509 *cert){
             isDate = 1;
         }
     } else{
-        fprintf(stderr, "Passed-in time structure has invalid syntax\n");
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "Passed-in time structure has invalid syntax at %d\n", __LINE__);
+        return -1;
     }
     day = 1;
     sec = 1;
@@ -229,8 +238,8 @@ int checkDate(X509 *cert){
             isDate = 1;
         }
     } else{
-        fprintf(stderr, "Passed-in time structure has invalid syntax\n");
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "Passed-in time structure has invalid syntax at %d\n", __LINE__);
+        return -1;
     }
     return isDate;
 }
@@ -270,6 +279,10 @@ int checkExtn(X509 *cert){
     BIO_get_mem_ptr(bio, &bptr);
 
     buff = (char *)malloc((bptr->length + 1) * sizeof(char));
+    if (buff == NULL){
+        fprintf(stderr, "Failed to malloc buff at %d\n", __LINE__);
+        return -1;
+    }
     memcpy(buff, bptr->data, bptr->length);
     buff[bptr->length] = '\0';
     if(strstr(buff, "CA:FALSE") == NULL) {
@@ -284,8 +297,8 @@ int checkExtn(X509 *cert){
 void writeCSV(Web** queues, int length){
     FILE *f = fopen("output.csv", "w");
     if (f == NULL) {
-        fprintf(stderr, "Error write file!\n");
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "Error to open file at %d\n", __LINE__);
+        return;
     }
 
     for (int i=0; i<length; i++){
