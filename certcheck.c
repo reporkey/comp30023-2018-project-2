@@ -187,26 +187,19 @@ int compareDN(char* CN, char* DN){
 
     if (CNlen > 2) {
 
-        if (CN[0] == '*') {
+        // if example.example.com
+        if (strcmp(CN, DN) == 0) isSame = 1;
 
-            // if *.example.com OR *example.example.com
-            CN = CN + sizeof(char);
-            for(int i=0; i<DNlen; i++){
-                if (strcmp(CN,&DN[i]) == 0){
-                    isSame = 1;
+        // if example*.example.com
+        for (int i = 0; i < DNlen && i < CNlen; i++) {
+            if ((CN[i] != DN[i]) && (CN[i] == '*') && (i+1 < CNlen)) {
+                i += 1;
+                printf("CN: %s\n DN:%s\n", &CN[i], &DN[i]);
+                for (int j = i; j < DNlen-i; j++) {
+                    if (strcmp(&CN[i], &DN[j]) == 0) isSame = 1;
+                    if (DN[j] == '.') break;
                 }
-            }
-        }else {
-            // if example.example.com
-            if (strcmp(CN, DN) == 0) isSame = 1;
-
-            // if example*.example.com
-            for (int i = 0; i < DNlen && i < CNlen; i++) {
-                if ((CN[i] != DN[i]) && (CN[i] == '*') && (i+1 < CNlen)) {
-                    for (int j = i; j < DNlen-i; j++) {
-                        if (strcmp(&CN[i+1], &DN[j]) == 0) isSame = 1;
-                    }
-                }
+                break;
             }
         }
     }
